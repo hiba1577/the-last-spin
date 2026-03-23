@@ -1,0 +1,351 @@
+#include "enigme_aleatoire.h"  // inclusion du header qui contient la structure Enigme
+
+/* =============================================================
+   FONCTION UTILITAIRE : creer une texture SDL depuis un texte
+   ============================================================= */
+static SDL_Texture* creerTexture(SDL_Renderer *r,  // le renderer SDL pour afficher
+                                  TTF_Font *f,      // la police de caractères
+                                  const char *texte,// le texte à convertir en texture
+                                  SDL_Color c)      // la couleur du texte
+{
+    // Convertir le texte en surface SDL (image en mémoire)
+    SDL_Surface *s = TTF_RenderUTF8_Blended(f, texte, c);
+
+    // Si la surface n'a pas pu être créée, retourner NULL
+    if (!s) return NULL;
+
+    // Convertir la surface en texture SDL (pour l'affichage)
+    SDL_Texture *t = SDL_CreateTextureFromSurface(r, s);
+
+    // Libérer la surface car on n'en a plus besoin
+    SDL_FreeSurface(s);
+
+    // Retourner la texture créée
+    return t;
+}
+
+/* =============================================================
+   FONCTION : compter le nombre de lignes dans le fichier
+   ============================================================= */
+int compterLignes(const char *fichier) // fichier = chemin vers enigme.txt
+{
+    // Ouvrir le fichier en mode lecture "r"
+    FILE *f = fopen(fichier, "r");
+
+    // Si le fichier n'existe pas, afficher erreur et retourner 0
+    if (!f) {
+        printf("ERREUR : impossible d'ouvrir %s\n", fichier);
+        return 0;
+    }
+
+    int  nb    = 0;       // compteur de lignes, commence à 0
+    char ligne[512];      // tableau pour stocker chaque ligne lue
+
+    // Lire le fichier ligne par ligne jusqu'à la fin
+    while (fgets(ligne, sizeof(ligne), f))
+        nb++;             // incrémenter le compteur à chaque ligne lue
+
+    // Fermer le fichier après lecture
+    fclose(f);
+
+    // Retourner le nombre total de lignes = nombre de questions
+    return nb;
+}
+
+/* =============================================================
+   FONCTION : decomposer une ligne en structure Enigme
+   Format ligne : "question?rep1.rep2.rep3.numero_bonne_rep"
+   ============================================================= */
+Enigme decomposer(const char *ligne,  // la ligne à découper
+                  SDL_Renderer *r,    // renderer pour créer les textures
+                  TTF_Font *f)        // police pour créer les textures
+{
+    Enigme e;                          // créer une variable Enigme vide
+    memset(&e, 0, sizeof(Enigme));     // mettre tous les champs à zéro
+
+    e.etat    = 0;                     // état initial : non résolu
+    e.font    = f;                     // sauvegarder la police
+    e.couleur = (SDL_Color){255, 255, 255, 255}; // couleur blanche par défaut
+
+    int i = 0; // index pour parcourir la ligne caractère par caractère
+    int j = 0; // index pour remplir les champs de l'enigme
+
+    /* --- ÉTAPE 1 : extraire la question (jusqu'au '?') --- */
+    while (ligne[i] != '?' && ligne[i] != '\0') // lire jusqu'au point d'interrogation
+        e.question[j++] = ligne[i++];           // copier chaque caractère dans question
+    e.question[j] = '\0';                        // terminer la chaîne avec '\0'
+    i++;                                         // sauter le caractère '?'
+
+    /* --- ÉTAPE 2 : extraire reponse1 (jusqu'au '.') --- */
+    j = 0;                                       // remettre j à zéro pour la nouvelle chaîne
+    while (ligne[i] != '.' && ligne[i] != '\0') // lire jusqu'au point
+        e.reponse1[j++] = ligne[i++];           // copier dans reponse1
+    e.reponse1[j] = '\0';                        // terminer la chaîne
+    i++;                                         // sauter le '.'
+
+    /* --- ÉTAPE 3 : extraire reponse2 (jusqu'au '.') --- */
+    j = 0;                                       // remettre j à zéro
+    while (ligne[i] != '.' && ligne[i] != '\0') // lire jusqu'au point
+        e.reponse2[j++] = ligne[i++];           // copier dans reponse2
+    e.reponse2[j] = '\0';                        // terminer la chaîne
+    i++;                                         // sauter le '.'
+
+    /* --- ÉTAPE 4 : extraire reponse3 (jusqu'au '.') --- */
+    j = 0;                                       // remettre j à zéro
+    while (ligne[i] != '.' && ligne[i] != '\0') // lire jusqu'au point
+        e.reponse3[j++] = ligne[i++];           // copier dans reponse3
+    e.reponse3[j] = '\0';                        // terminer la chaîne
+    i++;                                         // sauter le '.'
+
+    /* --- ÉTAPE 5 : extraire le numéro de la bonne réponse --- */
+    e.numbr = ligne[i] - '0'; // convertir le caractère '1','2' ou '3' en entier
+
+    /* --- ÉTAPE 6 : créer les textures SDL depuis les textes --- */
+    SDL_Color blanc = {255, 255, 255, 255}; // couleur blanche pour les réponses
+    SDL_Color jaune = {255, 220,   0, 255}; // couleur jaune pour la question
+
+    // Créer texture pour la question en jaune
+    e.tex_question = creerTexture(r, f, e.question,  jaune);
+
+    // Créer texture pour chaque réponse en blanc
+    e.tex_rep1     = creerTexture(r, f, e.reponse1,  blanc);
+    e.tex_rep2     = creerTexture(r, f, e.reponse2,  blanc);
+    e.tex_rep3     = creerTexture(r, f, e.reponse3,  blanc);
+
+    /* --- ÉTAPE 7 : définir les positions d'affichage --- */
+    // Position de la question : en haut au centre
+    e.pos_question = (SDL_Rect){50,  150, 700, 60};
+
+    // Position des 3 boutons réponses : côte à côte en bas
+    e.pos_rep1     = (SDL_Rect){50,  350, 220, 55}; // bouton gauche
+    e.pos_rep2     = (SDL_Rect){290, 350, 220, 55}; // bouton milieu
+    e.pos_rep3     = (SDL_Rect){530, 350, 220, 55}; // bouton droite
+
+    // Retourner l'enigme complètement initialisée
+    return e;
+}
+
+/* =============================================================
+   FONCTION : generer une enigme aleatoire depuis le fichier
+   ============================================================= */
+Enigme generer(const char *fichier, // chemin vers enigme.txt
+               SDL_Renderer *r,     // renderer SDL
+               TTF_Font *f)         // police de caractères
+{
+    Enigme e;                        // variable enigme vide
+    memset(&e, 0, sizeof(Enigme));   // initialiser à zéro
+
+    // Compter le nombre total de questions dans le fichier
+    int nb = compterLignes(fichier);
+
+    // Si le fichier est vide ou introuvable, retourner enigme vide
+    if (nb <= 0) {
+        printf("ERREUR : fichier vide ou introuvable\n");
+        return e;
+    }
+
+    // Initialiser le générateur aléatoire avec l'heure actuelle
+    srand((unsigned int)time(NULL));
+
+    // Générer un numéro aléatoire entre 1 et nb (ex: entre 1 et 6)
+    int num = (rand() % nb) + 1;
+
+    // Sauvegarder le numéro de la question sélectionnée
+    e.numQuestSelect = num;
+
+    // Ouvrir le fichier en lecture
+    FILE *fp = fopen(fichier, "r");
+
+    // Si impossible d'ouvrir le fichier, retourner enigme vide
+    if (!fp) return e;
+
+    char ligne[512]; // tableau pour stocker la ligne lue
+    int  compteur = 0; // compteur de lignes parcourues
+
+    // Parcourir le fichier ligne par ligne
+    while (fgets(ligne, sizeof(ligne), fp))
+    {
+        compteur++; // incrémenter le compteur à chaque ligne
+
+        // Vérifier si c'est la ligne qu'on cherche
+        if (compteur == num)
+        {
+            // Supprimer le '\n' en fin de ligne
+            ligne[strcspn(ligne, "\n")] = '\0';
+
+            // Décomposer la ligne en structure Enigme
+            e = decomposer(ligne, r, f);
+
+            // Sauvegarder le numéro de question
+            e.numQuestSelect = num;
+
+            // Sortir de la boucle, on a trouvé notre question
+            break;
+        }
+    }
+
+    // Fermer le fichier après lecture
+    fclose(fp);
+
+    // Retourner l'enigme générée aléatoirement
+    return e;
+}
+
+/* =============================================================
+   FONCTION : afficher l'enigme à l'écran
+   ============================================================= */
+void afficherEnigme(Enigme *e, SDL_Renderer *r)
+{
+    /* --- Fond semi-transparent noir --- */
+    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND); // activer transparence
+    SDL_SetRenderDrawColor(r, 0, 0, 0, 180);            // noir à 70% opacité
+    SDL_Rect fond = {30, 100, 740, 350};                // rectangle de fond
+    SDL_RenderFillRect(r, &fond);                       // dessiner le fond
+
+    // Bordure jaune autour du fond
+    SDL_SetRenderDrawColor(r, 255, 220, 0, 255);        // couleur jaune
+    SDL_RenderDrawRect(r, &fond);                       // dessiner la bordure
+
+    /* --- Afficher la question --- */
+    if (e->tex_question) // vérifier que la texture existe
+    {
+        int w, h; // variables pour la largeur et hauteur de la texture
+        SDL_QueryTexture(e->tex_question, NULL, NULL, &w, &h); // récupérer dimensions
+
+        // Calculer position centrée horizontalement
+        SDL_Rect dst = {
+            e->pos_question.x + (e->pos_question.w - w) / 2, // centrer en x
+            e->pos_question.y,                                 // position y fixe
+            w, h                                               // dimensions texture
+        };
+
+        // Afficher la texture de la question
+        SDL_RenderCopy(r, e->tex_question, NULL, &dst);
+    }
+
+    /* --- Définir couleurs des 3 boutons réponses --- */
+    SDL_Color couleurs[3] = {
+        {30,  30, 150, 220}, // bleu   pour réponse 1
+        {30, 100,  30, 220}, // vert   pour réponse 2
+        {150, 30,  30, 220}  // rouge  pour réponse 3
+    };
+
+    // Tableau des textures des réponses
+    SDL_Texture *reps[3] = {
+        e->tex_rep1, // texture réponse 1
+        e->tex_rep2, // texture réponse 2
+        e->tex_rep3  // texture réponse 3
+    };
+
+    // Tableau des positions des boutons
+    SDL_Rect pos[3] = {
+        e->pos_rep1, // position bouton 1 (gauche)
+        e->pos_rep2, // position bouton 2 (milieu)
+        e->pos_rep3  // position bouton 3 (droite)
+    };
+
+    /* --- Dessiner les 3 boutons réponses --- */
+    for (int i = 0; i < 3; i++) // boucle sur les 3 réponses
+    {
+        // Dessiner le fond coloré du bouton
+        SDL_SetRenderDrawColor(r,
+            couleurs[i].r,  // rouge
+            couleurs[i].g,  // vert
+            couleurs[i].b,  // bleu
+            couleurs[i].a); // transparence
+        SDL_RenderFillRect(r, &pos[i]); // remplir le bouton
+
+        // Dessiner la bordure blanche du bouton
+        SDL_SetRenderDrawColor(r, 255, 255, 255, 255); // blanc
+        SDL_RenderDrawRect(r, &pos[i]);                // bordure
+
+        // Afficher le texte de la réponse sur le bouton
+        if (reps[i]) // vérifier que la texture existe
+        {
+            int w, h; // dimensions de la texture
+            SDL_QueryTexture(reps[i], NULL, NULL, &w, &h); // récupérer dimensions
+
+            // Centrer le texte dans le bouton
+            SDL_Rect dst = {
+                pos[i].x + (pos[i].w - w) / 2, // centrer en x dans le bouton
+                pos[i].y + (pos[i].h - h) / 2, // centrer en y dans le bouton
+                w, h                             // dimensions du texte
+            };
+
+            // Afficher la texture de la réponse
+            SDL_RenderCopy(r, reps[i], NULL, &dst);
+        }
+    }
+
+    /* --- Afficher message résultat selon l'état --- */
+    if (e->etat == 1) // bonne réponse
+    {
+        SDL_Color vert = {50, 220, 80, 255}; // couleur verte
+
+        // Créer surface avec le message de succès
+        SDL_Surface *s = TTF_RenderUTF8_Blended(
+            e->font,                    // police
+            "BONNE REPONSE ! +10 pts",  // message
+            vert);                      // couleur verte
+
+        if (s) // si la surface est créée
+        {
+            // Convertir en texture
+            SDL_Texture *t = SDL_CreateTextureFromSurface(r, s);
+
+            // Position du message en bas
+            SDL_Rect dst = {200, 440, s->w, s->h};
+
+            // Afficher le message
+            SDL_RenderCopy(r, t, NULL, &dst);
+
+            // Libérer les ressources
+            SDL_FreeSurface(s);
+            SDL_DestroyTexture(t);
+        }
+    }
+    else if (e->etat == -1) // mauvaise réponse
+    {
+        SDL_Color rouge = {220, 50, 50, 255}; // couleur rouge
+
+        // Créer surface avec le message d'échec
+        SDL_Surface *s = TTF_RenderUTF8_Blended(
+            e->font,                       // police
+            "MAUVAISE REPONSE ! -1 vie",   // message
+            rouge);                        // couleur rouge
+
+        if (s) // si la surface est créée
+        {
+            // Convertir en texture
+            SDL_Texture *t = SDL_CreateTextureFromSurface(r, s);
+
+            // Position du message en bas
+            SDL_Rect dst = {200, 440, s->w, s->h};
+
+            // Afficher le message
+            SDL_RenderCopy(r, t, NULL, &dst);
+
+            // Libérer les ressources
+            SDL_FreeSurface(s);
+            SDL_DestroyTexture(t);
+        }
+    }
+}
+
+/* =============================================================
+   FONCTION : liberer toutes les ressources de l'enigme
+   ============================================================= */
+void libererEnigme(Enigme *e)
+{
+    // Libérer la texture de la question si elle existe
+    if (e->tex_question) SDL_DestroyTexture(e->tex_question);
+
+    // Libérer la texture de la réponse 1 si elle existe
+    if (e->tex_rep1)     SDL_DestroyTexture(e->tex_rep1);
+
+    // Libérer la texture de la réponse 2 si elle existe
+    if (e->tex_rep2)     SDL_DestroyTexture(e->tex_rep2);
+
+    // Libérer la texture de la réponse 3 si elle existe
+    if (e->tex_rep3)     SDL_DestroyTexture(e->tex_rep3);
+}
